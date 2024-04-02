@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
 	"net/http"
 
 	"github.com/go-playground/webhooks/v6/github"
+	"go.uber.org/zap"
 )
 
 const (
@@ -16,15 +16,20 @@ const (
 )
 
 func main() {
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	secret, ok := os.LookupEnv(EnvGithubSecret)
 	if !ok {
-		log.Fatalf("must set environment variable '%s'", EnvGithubSecret)
+		logger.Fatal("must set environment variable", zap.String("variable", EnvGithubSecret))
 	}
 
 	hook, _ := github.New(github.Options.Secret(secret))
 
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		payload, err := hook.Parse(r, github.ReleaseEvent, github.PullRequestEvent)
+		payload, err := hook.Parse(r, github.PullRequestEvent)
 		if err != nil {
 			if err == github.ErrEventNotFound {
 				return
@@ -32,15 +37,9 @@ func main() {
 		}
 
 		switch payload.(type) {
-		case github.ReleasePayload:
-			release := payload.(github.ReleasePayload)
-			// Do whatever you want from here...
-			fmt.Printf("%+v", release)
-
 		case github.PullRequestPayload:
 			pullRequest := payload.(github.PullRequestPayload)
-			// Do whatever you want from here...
-			fmt.Printf("%+v", pullRequest)
+			logger.Info("pr event", zap.Any("pullRequest", pullRequest))
 		}
 	})
 	http.ListenAndServe(":8080", nil)
